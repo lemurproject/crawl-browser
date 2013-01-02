@@ -26,18 +26,20 @@ import org.apache.lucene.document.Field
 import org.jwat.warc.WarcHeader
 import net.htmlparser.jericho.Config
 import net.htmlparser.jericho.LoggerProvider
+import com.cybozu.labs.langdetect.LangDetectException
 
 object CrawlBrowser {
-  
-  var indexWriter: IndexWriter = null  
-  var langDetect: LangDetect = null 
+
+  var bufferSize = 1000
+  var indexWriter: IndexWriter = null
+  var langDetect: LangDetect = null
   var defaultLang: String = null
 
   class Response(
-      val record: WarcRecord, val headers: Warc.HttpHeaders,
-      val source: Source, val text: String) {
+    val record: WarcRecord, val headers: Warc.HttpHeaders,
+    val source: Source, val text: String) {
   }
-  
+
   /**
    * Finds the files in the given directory that have been modified within a range
    */
@@ -61,65 +63,80 @@ object CrawlBrowser {
   }
 
   /**
-   * Creates a Response object from a WarcRecord. 
-   * 
+   * Creates a Response object from a WarcRecord.
+   *
    * This method extracts the HTML document and creates a text based version of it.
-   * 
+   *
    */
   def extractResponse(record: WarcRecord) = {
     val (headers, content) = Warc.parseResponse(record)
     val source = new Source(content)
     val extractor = new TextExtractor(source)
     val text = extractor.toString()
-    
+
     new Response(record, headers, source, text)
   }
-  
+
   /**
    * Determines whether a Response object is included in the index or not.
    */
-  def filterResponse(response: Response) = {
+  def filterResponse(response: Response): Boolean = {
     val detector = langDetect.createDetector()
     detector.append(response.text)
-    val lang = detector.detect()
-    lang == defaultLang
+    try {
+     
+        val lang = detector.detect()
+        return lang == defaultLang
+    } catch {
+      case e: LangDetectException => {
+        return false
+      }
+    }
   }
-  
+
   /**
    * Adds a response object to the index
    */
-  def indexResponse(response: Response){
-    val headerUri = response.record.getHeader("WARC-Target-URI")    
+  def indexResponse(response: Response) {
+    val headerUri = response.record.getHeader("WARC-Target-URI")
     val url = if (headerUri != null) headerUri.value else "";
-    
-    val doc = new Document()    
+
+    val doc = new Document()
     doc.add(new StringField("url", url, Field.Store.YES))
-    
+
     response.record.getHeaderList().foreach(header => {
-      doc.add(new StringField(header.name, header.value, Field.Store.YES))     
+      doc.add(new StringField(header.name, header.value, Field.Store.YES))
     })
-    
-    doc.add(new TextField("body", response.text, Field.Store.NO))    
+
+    doc.add(new TextField("body", response.text, Field.Store.NO))
     indexWriter.addDocument(doc)
   }
-  
+
   def processFiles(files: Seq[File]) {
     val listRecords = for (file <- files.iterator) yield Warc.readResponses(file)
     val records = listRecords.flatten
 
     // Parse the responses 
-    val responses = records.map(extractResponse)
+    val allResponses = records.map(extractResponse)
 
-    // Filter by language
-    val filtered = responses.filter(filterResponse)
-    
-    // Add them to the Lucene Index    
-    filtered.foreach(indexResponse)
+    val buffered = allResponses.grouped(bufferSize)
+    buffered foreach (responseGroup => {
+
+      val responses = responseGroup.par
+
+      //Filter by language      
+      val filtered = responses.filter(filterResponse)
+
+      // Add them to the Lucene Index    
+      filtered.foreach(indexResponse)
+    })
+
   }
 
   def main(args: Array[String]) {
     val parser = ArgumentParsers.newArgumentParser("CrawlBrowser");
     parser.addArgument("--lang")
+    parser.addArgument("--buffer").`type`(classOf[Integer])
     parser.addArgument("--max-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("--min-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("profileDir")
@@ -141,13 +158,14 @@ object CrawlBrowser {
 
     //Global settings
     Config.LoggerProvider = LoggerProvider.DISABLED
-    
-    defaultLang = if (ns.getString("lang") != null) ns.getString("lang") else "en"
-    langDetect = new LangDetect(profileDir)    
+
+    bufferSize = if (ns.get("buffer") != null) ns.getInt("buffer") else bufferSize
+    defaultLang = if (ns.get("lang") != null) ns.getString("lang") else "en"
+    langDetect = new LangDetect(profileDir)
     indexWriter = Lucene.getWriter(indexPath)
-    
+
     processFiles(inputFiles)
-    indexWriter.close()    
+    indexWriter.close()
   }
 }
 
