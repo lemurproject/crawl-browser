@@ -4,6 +4,9 @@ name := "crawl-browser"
 
 version := "0.1"
 
+libraryDependencies += "org.slf4j" % "slf4j-api" % "1.7.2"
+
+libraryDependencies += "org.slf4j" % "slf4j-simple" % "1.7.2"
 
 libraryDependencies += "junit" % "junit" % "4.8.1" % "test"
 

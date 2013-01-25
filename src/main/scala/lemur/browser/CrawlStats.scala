@@ -20,7 +20,7 @@ import scala.collection.mutable.HashMap
  */
 class CrawlStats(path: File) {
 
-  val data = new HashMap[String, Int]()
+  val data = new HashMap[String, Double]()
   
   if (path.exists())
     load()
@@ -28,14 +28,15 @@ class CrawlStats(path: File) {
   def load() {
 	  val gson = new Gson()
 	  val reader = new FileReader(path)
-	  val loadedData = gson.fromJson(reader, classOf[java.util.Map[String, Int]])
+	  val loadedData = gson.fromJson(reader, classOf[java.util.Map[String, Double]])
 	  reader.close()
 	  data ++= loadedData
   }
   
   def inc(group: String, item: String) {
     val key = group + ":" + item
-    data.put(key, data.getOrElse(key, 0) + 1)
+    val prev = data.getOrElse(key, 0.0)
+    data.put(key, prev + 1.0)
   }
   
   def addResponse(response: Response) {

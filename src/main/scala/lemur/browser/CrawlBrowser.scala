@@ -3,21 +3,17 @@ package lemur.browser;
 
 import java.io.File
 import java.util.Date
-
 import scala.Array.fallbackCanBuildFrom
 import scala.collection.JavaConversions.asScalaBuffer
 import scala.collection.TraversableOnce.flattenTraversableOnce
 import scala.util.Random
-
 import org.apache.lucene.document.Document
 import org.apache.lucene.document.Field
 import org.apache.lucene.document.StringField
 import org.apache.lucene.document.TextField
 import org.apache.lucene.index.IndexWriter
 import org.jwat.warc.WarcRecord
-
 import com.cybozu.labs.langdetect.LangDetectException
-
 import lemur.util.ArgParse
 import lemur.util.LangDetect
 import lemur.util.Lucene
@@ -28,9 +24,12 @@ import net.htmlparser.jericho.Source
 import net.htmlparser.jericho.TextExtractor
 import net.sourceforge.argparse4j.ArgumentParsers
 import net.sourceforge.argparse4j.impl.Arguments
+import org.slf4j.LoggerFactory
 
 object CrawlBrowser {
 
+  val logger = LoggerFactory.getLogger("CrawlBrowser")
+  
   var sampleSize = 1.0f
   var indexWriter: IndexWriter = null
   var crawlStats: CrawlStats = null
@@ -69,13 +68,20 @@ object CrawlBrowser {
    * This method extracts the HTML document and creates a text based version of it.
    *
    */
-  def extractResponse(record: WarcRecord) = {
-    val (headers, content) = Warc.parseResponse(record)
-    val source = new Source(content)
-    val extractor = new TextExtractor(source)
-    val text = extractor.toString()
+  def extractResponse(record: WarcRecord): Option[Response] = {
+    try {
+      val (headers, content) = Warc.parseResponse(record)
+      val source = new Source(content)
+      val extractor = new TextExtractor(source)
+      val text = extractor.toString()
 
-    new Response(record, headers, source, text)
+      Some(new Response(record, headers, source, text))
+    } catch {
+      case e: Exception => {
+    	  logger.debug("Error parsing record: ", e)
+    	  None 
+      }
+    }
   }
 
   /**
@@ -96,8 +102,8 @@ object CrawlBrowser {
   }
 
   // WARC headers excluded from the index
-  val excludedHeaders = "WARC-Target-URI" :: "WARC-IP-Address" :: 
-	  "Content-Type" :: "WARC-Type" :: "WARC-Payload-Digest":: Nil
+  val excludedHeaders = "WARC-Target-URI" :: "WARC-IP-Address" ::
+    "Content-Type" :: "WARC-Type" :: "WARC-Payload-Digest" :: Nil
 
   /**
    * Adds a response object to the Lucene index
@@ -107,10 +113,9 @@ object CrawlBrowser {
     doc.add(new StringField("url", response.uri.toASCIIString, Field.Store.YES))
 
     val headers = for (
-        head <- response.record.getHeaderList
-        if !excludedHeaders.contains(head.name)
-    ) yield head 
-    
+      head <- response.record.getHeaderList if !excludedHeaders.contains(head.name)
+    ) yield head
+
     // Add a new field for each HTTP header
     headers.foreach(header => {
       doc.add(new StringField(header.name, header.value, Field.Store.YES))
@@ -126,23 +131,29 @@ object CrawlBrowser {
     val records = listRecords.flatten
 
     // Parse the responses 
-    val responsesAll = records.map(extractResponse)
+    val responsesAll = records.flatMap(extractResponse)
     //Filter them by language
     val responsesEng = responsesAll.filter(filterResponse)
 
     // Sample the responses
     //val sampledResponses = responsesEng.filter(randomSample(sampleSize, _))
 
+    var nResp = 0
     responsesEng.foreach(resp => {
       // Add them to the Lucene Index    
       indexResponse(resp)
-      
+
       // Register the statistics
       crawlStats.addResponse(resp)
+      
+      nResp += 1
     })
+    logger.info("Finished. Responses=%s".format(nResp))
   }
 
   def main(args: Array[String]) {
+    
+    // Argument Parser
     val parser = ArgumentParsers.newArgumentParser("CrawlBrowser");
     parser.addArgument("--lang")
       .help("Select only the documents written in this language. 'en', by default.")
