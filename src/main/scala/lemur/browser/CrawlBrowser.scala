@@ -167,8 +167,8 @@ object CrawlBrowser {
     val parser = ArgumentParsers.newArgumentParser("CrawlBrowser");
     parser.addArgument("--lang")
       .help("Select only the documents written in this language. 'en', by default.")
-    parser.addArgument("--sample").`type`(classOf[Float]).help("Sample size [0,1]")
-    parser.addArgument("--every").`type`(classOf[Int]).help("Log every N records")
+    parser.addArgument("--sample").`type`(classOf[java.lang.Float]).help("Sample size [0,1]")
+    parser.addArgument("--every").`type`(classOf[java.lang.Integer]).help("Log every N records")
     parser.addArgument("--max-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("--min-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("profileDir").help("Language detection profiles directory")
@@ -198,7 +198,7 @@ object CrawlBrowser {
     //Global settings
     Config.LoggerProvider = LoggerProvider.DISABLED
 
-    reportEvery = if (ns.get("every") != null) ns.getInt("sample") else reportEvery
+    reportEvery = if (ns.get("every") != null) ns.getInt("every") else reportEvery
     sampleSize = if (ns.get("sample") != null) ns.getFloat("sample") else sampleSize
     defaultLang = if (ns.get("lang") != null) ns.getString("lang") else "en"
     langDetect = new LangDetect(profileDir)

@@ -1,6 +1,6 @@
 package lemur.util
 
-import java.util.Random
+import java.lang.Math
 
 class ProgressIterator[T](callBack: (Int, Long, Long) => Unit, it: Iterator[T]) extends Iterator[T] {
   var iters = 0
