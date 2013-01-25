@@ -25,6 +25,7 @@ import net.htmlparser.jericho.TextExtractor
 import net.sourceforge.argparse4j.ArgumentParsers
 import net.sourceforge.argparse4j.impl.Arguments
 import org.slf4j.LoggerFactory
+import lemur.util.ProgressIterator
 
 object CrawlBrowser {
 
@@ -35,6 +36,8 @@ object CrawlBrowser {
   var crawlStats: CrawlStats = null
   var langDetect: LangDetect = null
   var defaultLang: String = null
+  
+  var reportEvery = 1000
 
   /**
    * Finds the files in the given directory that have been modified within a range
@@ -59,7 +62,7 @@ object CrawlBrowser {
   }
 
   def randomSample(sampleSize: Float, item: Any) = {
-    Random.nextFloat > sampleSize
+    Random.nextFloat <= sampleSize
   }
 
   /**
@@ -126,6 +129,10 @@ object CrawlBrowser {
     indexWriter.addDocument(doc)
   }
 
+  def progress(iters: Int, tGap: Long, tTotal: Long) {
+    logger.info("Processed records: %d".format(iters))
+  }
+  
   def processFiles(files: Seq[File]) {
     val listRecords = for (file <- files.iterator) yield Warc.readResponses(file)
     val records = listRecords.flatten
@@ -136,10 +143,13 @@ object CrawlBrowser {
     val responsesEng = responsesAll.filter(filterResponse)
 
     // Sample the responses
-    //val sampledResponses = responsesEng.filter(randomSample(sampleSize, _))
-
+    val sampledResponses = responsesEng.filter(randomSample(sampleSize, _))
+    
     var nResp = 0
-    responsesEng.foreach(resp => {
+    
+    val responsesProgress = new ProgressIterator(progress, sampledResponses).every(100)
+    
+    responsesProgress.foreach(resp => {
       // Add them to the Lucene Index    
       indexResponse(resp)
 
@@ -158,6 +168,7 @@ object CrawlBrowser {
     parser.addArgument("--lang")
       .help("Select only the documents written in this language. 'en', by default.")
     parser.addArgument("--sample").`type`(classOf[Float]).help("Sample size [0,1]")
+    parser.addArgument("--every").`type`(classOf[Int]).help("Log every N records")
     parser.addArgument("--max-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("--min-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("profileDir").help("Language detection profiles directory")
@@ -187,6 +198,7 @@ object CrawlBrowser {
     //Global settings
     Config.LoggerProvider = LoggerProvider.DISABLED
 
+    reportEvery = if (ns.get("every") != null) ns.getInt("sample") else reportEvery
     sampleSize = if (ns.get("sample") != null) ns.getFloat("sample") else sampleSize
     defaultLang = if (ns.get("lang") != null) ns.getString("lang") else "en"
     langDetect = new LangDetect(profileDir)
