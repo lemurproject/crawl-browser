@@ -145,7 +145,7 @@ object CrawlBrowser {
     
     var nResp = 0
     
-    val responsesProgress = new ProgressIterator(progress, sampledResponses).every(100)
+    val responsesProgress = new ProgressIterator(progress, sampledResponses).every(reportEvery)
     
     responsesProgress.foreach(resp => {
       // Add them to the Lucene Index    
