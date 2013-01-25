@@ -27,6 +27,15 @@ Requirements & Use Cases
      - Content (html)
 
 4. Generate reports
-     
+    - Total pages
+    - Domains (topK)
+    - Date histogram
+    - Bytes
 
+   Store the stats on a file (JSON)
 
+5. Browse/search interface
+
+   Web interface for browsing the index
+
+    - Java tiny server/framework

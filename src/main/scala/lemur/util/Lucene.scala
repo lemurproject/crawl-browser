@@ -8,9 +8,12 @@ import org.apache.lucene.util.Version
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 
 object Lucene {
-    def getWriter(indexPath: String) = {
-      val dir = FSDirectory.open(new File(indexPath));
-      
+    def getWriter(indexPath: String): IndexWriter = {
+      getWriter(new File(indexPath))
+    }
+  
+    def getWriter(indexPath: File): IndexWriter = {
+      val dir = FSDirectory.open(indexPath);      
       val analyzer = new StandardAnalyzer(Version.LUCENE_40);
       val iwc = new IndexWriterConfig(Version.LUCENE_40, analyzer);      
       val writer = new IndexWriter(dir, iwc);

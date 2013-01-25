@@ -1,44 +1,41 @@
 
 package lemur.browser;
 
-import scala.collection.JavaConversions._
 import java.io.File
 import java.util.Date
-import net.sourceforge.argparse4j.ArgumentParsers
-import net.sourceforge.argparse4j.impl.Arguments
-import net.sourceforge.argparse4j.inf.ArgumentParser
-import net.sourceforge.argparse4j.inf.ArgumentParserException
-import net.sourceforge.argparse4j.inf.Namespace
-import lemur.util.ArgParse
-import lemur.util.Warc
-import org.jwat.warc.WarcRecord
-import de.l3s.boilerpipe.extractors.ArticleExtractor
-import net.htmlparser.jericho.Source
-import net.htmlparser.jericho.TextExtractor
-import lemur.util.LangDetect
-import com.cybozu.labs.langdetect.Detector
-import lemur.util.Lucene
-import org.apache.lucene.index.IndexWriter
+
+import scala.Array.fallbackCanBuildFrom
+import scala.collection.JavaConversions.asScalaBuffer
+import scala.collection.TraversableOnce.flattenTraversableOnce
+import scala.util.Random
+
 import org.apache.lucene.document.Document
-import org.apache.lucene.document.TextField
-import org.apache.lucene.document.StringField
 import org.apache.lucene.document.Field
-import org.jwat.warc.WarcHeader
+import org.apache.lucene.document.StringField
+import org.apache.lucene.document.TextField
+import org.apache.lucene.index.IndexWriter
+import org.jwat.warc.WarcRecord
+
+import com.cybozu.labs.langdetect.LangDetectException
+
+import lemur.util.ArgParse
+import lemur.util.LangDetect
+import lemur.util.Lucene
+import lemur.util.Warc
 import net.htmlparser.jericho.Config
 import net.htmlparser.jericho.LoggerProvider
-import com.cybozu.labs.langdetect.LangDetectException
+import net.htmlparser.jericho.Source
+import net.htmlparser.jericho.TextExtractor
+import net.sourceforge.argparse4j.ArgumentParsers
+import net.sourceforge.argparse4j.impl.Arguments
 
 object CrawlBrowser {
 
-  var bufferSize = 1000
+  var sampleSize = 1.0f
   var indexWriter: IndexWriter = null
+  var crawlStats: CrawlStats = null
   var langDetect: LangDetect = null
   var defaultLang: String = null
-
-  class Response(
-    val record: WarcRecord, val headers: Warc.HttpHeaders,
-    val source: Source, val text: String) {
-  }
 
   /**
    * Finds the files in the given directory that have been modified within a range
@@ -60,6 +57,10 @@ object CrawlBrowser {
     ) yield findFiles(dir, minLastModified, maxLastModified)
 
     fileLists.flatten
+  }
+
+  def randomSample(sampleSize: Float, item: Any) = {
+    Random.nextFloat > sampleSize
   }
 
   /**
@@ -84,9 +85,9 @@ object CrawlBrowser {
     val detector = langDetect.createDetector()
     detector.append(response.text)
     try {
-     
-        val lang = detector.detect()
-        return lang == defaultLang
+
+      val lang = detector.detect()
+      return lang == defaultLang
     } catch {
       case e: LangDetectException => {
         return false
@@ -94,20 +95,28 @@ object CrawlBrowser {
     }
   }
 
+  // WARC headers excluded from the index
+  val excludedHeaders = "WARC-Target-URI" :: "WARC-IP-Address" :: 
+	  "Content-Type" :: "WARC-Type" :: "WARC-Payload-Digest":: Nil
+
   /**
-   * Adds a response object to the index
+   * Adds a response object to the Lucene index
    */
   def indexResponse(response: Response) {
-    val headerUri = response.record.getHeader("WARC-Target-URI")
-    val url = if (headerUri != null) headerUri.value else "";
-
     val doc = new Document()
-    doc.add(new StringField("url", url, Field.Store.YES))
+    doc.add(new StringField("url", response.uri.toASCIIString, Field.Store.YES))
 
-    response.record.getHeaderList().foreach(header => {
+    val headers = for (
+        head <- response.record.getHeaderList
+        if !excludedHeaders.contains(head.name)
+    ) yield head 
+    
+    // Add a new field for each HTTP header
+    headers.foreach(header => {
       doc.add(new StringField(header.name, header.value, Field.Store.YES))
     })
 
+    // Add the full text as 'body' field
     doc.add(new TextField("body", response.text, Field.Store.NO))
     indexWriter.addDocument(doc)
   }
@@ -117,31 +126,34 @@ object CrawlBrowser {
     val records = listRecords.flatten
 
     // Parse the responses 
-    val allResponses = records.map(extractResponse)
+    val responsesAll = records.map(extractResponse)
+    //Filter them by language
+    val responsesEng = responsesAll.filter(filterResponse)
 
-    val buffered = allResponses.grouped(bufferSize)
-    buffered foreach (responseGroup => {
+    // Sample the responses
+    //val sampledResponses = responsesEng.filter(randomSample(sampleSize, _))
 
-      val responses = responseGroup.par
-
-      //Filter by language      
-      val filtered = responses.filter(filterResponse)
-
+    responsesEng.foreach(resp => {
       // Add them to the Lucene Index    
-      filtered.foreach(indexResponse)
+      indexResponse(resp)
+      
+      // Register the statistics
+      crawlStats.addResponse(resp)
     })
-
   }
 
   def main(args: Array[String]) {
     val parser = ArgumentParsers.newArgumentParser("CrawlBrowser");
     parser.addArgument("--lang")
-    parser.addArgument("--buffer").`type`(classOf[Integer])
+      .help("Select only the documents written in this language. 'en', by default.")
+    parser.addArgument("--sample").`type`(classOf[Float]).help("Sample size [0,1]")
     parser.addArgument("--max-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
     parser.addArgument("--min-date").`type`(new ArgParse.DateType("yyyy-MM-dd"))
-    parser.addArgument("profileDir")
-    parser.addArgument("indexPath")
-    parser.addArgument("inputDir").nargs("+").`type`(Arguments.fileType().verifyIsDirectory())
+    parser.addArgument("profileDir").help("Language detection profiles directory")
+    parser.addArgument("outputDir").`type`(Arguments.fileType().verifyIsDirectory())
+      .help("Output directory")
+    parser.addArgument("inputDir").`type`(Arguments.fileType().verifyIsDirectory())
+      .nargs("+").help("Input directories containing WARC files")
 
     val ns = parser.parseArgsOrFail(args);
 
@@ -152,20 +164,27 @@ object CrawlBrowser {
     val maxLastModified = if (maxDate != null) maxDate.getTime else Long.MaxValue
 
     val profileDir = ns.getString("profileDir")
-    val indexPath = ns.getString("indexPath")
+
+    val outputDir = ns.get("outputDir").asInstanceOf[File]
+
+    val indexPath = new File(outputDir, "index")
+    val statsPath = new File(outputDir, "stats.json")
+
     val inputDirs = ns.getList("inputDir").asInstanceOf[java.util.List[File]]
     val inputFiles = findFiles(inputDirs, minLastModified, maxLastModified)
 
     //Global settings
     Config.LoggerProvider = LoggerProvider.DISABLED
 
-    bufferSize = if (ns.get("buffer") != null) ns.getInt("buffer") else bufferSize
+    sampleSize = if (ns.get("sample") != null) ns.getFloat("sample") else sampleSize
     defaultLang = if (ns.get("lang") != null) ns.getString("lang") else "en"
     langDetect = new LangDetect(profileDir)
     indexWriter = Lucene.getWriter(indexPath)
+    crawlStats = new CrawlStats(statsPath)
 
     processFiles(inputFiles)
     indexWriter.close()
+    crawlStats.save()
   }
 }
 

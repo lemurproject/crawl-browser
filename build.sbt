@@ -15,12 +15,15 @@ libraryDependencies += "net.htmlparser.jericho" % "jericho-html" % "3.1" withSou
 
 libraryDependencies += "org.jwat" % "jwat-warc" % "0.9.1"  withSources ()
 
+libraryDependencies += "org.jwat" % "jwat-common" % "0.9.1"  withSources ()
+
 libraryDependencies += "de.l3s.boilerpipe" % "boilerpipe" % "1.1.0"  withSources ()
 
 libraryDependencies += "org.apache.lucene" % "lucene-core" % "4.0.0-BETA"
 
 libraryDependencies += "org.apache.lucene" % "lucene-analyzers-common" % "4.0.0-BETA"
 
+libraryDependencies += "com.google.code.gson" % "gson" % "2.2.2"
 
 // Disabled since we're using the local version
 // libraryDependencies += "net.sourceforge.argparse4j" % "argparse4j" % "0.2.2"  withSources ()
