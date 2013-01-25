@@ -58,8 +58,8 @@ object Warc {
           inHeader=false;
       }
     }
-    
-    (headers, reader)    
+    reader.close()
+    (headers, payload)    
   }
 }
 

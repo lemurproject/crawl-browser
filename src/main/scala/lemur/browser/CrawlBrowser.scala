@@ -23,10 +23,14 @@ import net.sourceforge.argparse4j.impl.Arguments
 import org.slf4j.LoggerFactory
 import lemur.util.ProgressIterator
 import org.apache.commons.io.IOUtils
+import org.apache.commons.io.input.BoundedInputStream
 
 object CrawlBrowser {
 
   val logger = LoggerFactory.getLogger("CrawlBrowser")
+
+  // Read only the first 512 KB of each document
+  val MaxDocSize = 512000; // 512 KB
   
   var sampleSize = 1.0f
   var indexWriter: IndexWriter = null
@@ -72,8 +76,12 @@ object CrawlBrowser {
     try {
       val (headers, content) = Warc.parseResponse(record)
 
+      // Bound the content to a maximum size
+      val countentB = new BoundedInputStream(content, MaxDocSize)
+      
       // Quick and dirty HTML parsing
-      val html = IOUtils.toString(content)
+      val html = IOUtils.toString(countentB)
+
       val text = html.replaceAll("<[^>]*>", "")
 
       Some(new Response(record, headers, text))
@@ -127,14 +135,17 @@ object CrawlBrowser {
     indexWriter.addDocument(doc)
   }
 
-  def progress(iters: Int, tGap: Long, tTotal: Long) {
+  def progress(iters: Int, tGap: Long) {
     logger.info("Processed records: %d".format(iters))
   }
   
-  def processFiles(files: Seq[File]) {
-    val listRecords = for (file <- files.iterator) yield Warc.readResponses(file)
+  def processFiles(files: Iterator[File]) {
+    val filesProgress = new ProgressIterator((iters: Int, tGap: Long) => {
+      logger.info("Processed files: %d".format(iters))
+    }, files)
+    val listRecords = for (file <- filesProgress) yield Warc.readResponses(file)
     val records = listRecords.flatten
-
+    
     // Parse the responses 
     val responsesAll = records.flatMap(extractResponse)
     //Filter them by language
@@ -199,10 +210,8 @@ object CrawlBrowser {
     langDetect = new LangDetect(profileDir)
     indexWriter = Lucene.getWriter(indexPath)
     crawlStats = new CrawlStats(statsPath)
-
-    //Thread.sleep(5000)
     
-    processFiles(inputFiles)
+    processFiles(inputFiles.iterator)
     indexWriter.close()
     crawlStats.save()
   }

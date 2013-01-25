@@ -2,7 +2,7 @@ package lemur.util
 
 import java.lang.Math
 
-class ProgressIterator[T](callBack: (Int, Long, Long) => Unit, it: Iterator[T]) extends Iterator[T] {
+class ProgressIterator[T](callBack: (Int, Long) => Unit, it: Iterator[T]) extends Iterator[T] {
   var iters = 0
   var tStarted = 0L
   var tPrev = 0L
@@ -41,7 +41,7 @@ class ProgressIterator[T](callBack: (Int, Long, Long) => Unit, it: Iterator[T]) 
     val nRand = Math.random
 
     if (nRand <= _sample && tGap >= _minSecs && (iters % _every) == 0) {
-      callBack(iters, tGap, total)
+      callBack(iters, tGap)
       tReported = tIter
     }
     iters += 1
