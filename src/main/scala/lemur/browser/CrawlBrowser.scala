@@ -18,10 +18,6 @@ import lemur.util.ArgParse
 import lemur.util.LangDetect
 import lemur.util.Lucene
 import lemur.util.Warc
-import net.htmlparser.jericho.Config
-import net.htmlparser.jericho.LoggerProvider
-import net.htmlparser.jericho.Source
-import net.htmlparser.jericho.TextExtractor
 import net.sourceforge.argparse4j.ArgumentParsers
 import net.sourceforge.argparse4j.impl.Arguments
 import org.slf4j.LoggerFactory
@@ -196,9 +192,6 @@ object CrawlBrowser {
 
     val inputDirs = ns.getList("inputDir").asInstanceOf[java.util.List[File]]
     val inputFiles = findFiles(inputDirs, minLastModified, maxLastModified)
-
-    //Global settings
-    Config.LoggerProvider = LoggerProvider.DISABLED
 
     reportEvery = if (ns.get("every") != null) ns.getInt("every") else reportEvery
     sampleSize = if (ns.get("sample") != null) ns.getFloat("sample") else sampleSize

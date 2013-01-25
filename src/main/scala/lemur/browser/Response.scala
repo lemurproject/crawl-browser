@@ -2,7 +2,6 @@ package lemur.browser
 
 import lemur.util.Warc
 import org.jwat.warc.WarcRecord
-import net.htmlparser.jericho.Source
 import org.jwat.warc.WarcDateParser
 import java.net.URI
 
