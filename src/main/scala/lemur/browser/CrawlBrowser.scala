@@ -26,6 +26,7 @@ import net.sourceforge.argparse4j.ArgumentParsers
 import net.sourceforge.argparse4j.impl.Arguments
 import org.slf4j.LoggerFactory
 import lemur.util.ProgressIterator
+import org.apache.commons.io.IOUtils
 
 object CrawlBrowser {
 
@@ -74,11 +75,12 @@ object CrawlBrowser {
   def extractResponse(record: WarcRecord): Option[Response] = {
     try {
       val (headers, content) = Warc.parseResponse(record)
-      val source = new Source(content)
-      val extractor = new TextExtractor(source)
-      val text = extractor.toString()
 
-      Some(new Response(record, headers, source, text))
+      // Quick and dirty HTML parsing
+      val html = IOUtils.toString(content)
+      val text = html.replaceAll("<[^>]*>", "")
+
+      Some(new Response(record, headers, text))
     } catch {
       case e: Exception => {
     	  logger.debug("Error parsing record: ", e)
@@ -92,7 +94,7 @@ object CrawlBrowser {
    */
   def filterResponse(response: Response): Boolean = {
     val detector = langDetect.createDetector()
-    detector.append(response.text)
+    detector.append(response.text.substring(0, math.min(response.text.length(), 1000)))
     try {
 
       val lang = detector.detect()
@@ -205,6 +207,8 @@ object CrawlBrowser {
     indexWriter = Lucene.getWriter(indexPath)
     crawlStats = new CrawlStats(statsPath)
 
+    //Thread.sleep(5000)
+    
     processFiles(inputFiles)
     indexWriter.close()
     crawlStats.save()

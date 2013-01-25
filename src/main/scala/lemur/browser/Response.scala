@@ -7,8 +7,7 @@ import org.jwat.warc.WarcDateParser
 import java.net.URI
 
 class Response(
-  val record: WarcRecord, val headers: Warc.HttpHeaders,
-  val source: Source, val text: String) {
+  val record: WarcRecord, val headers: Warc.HttpHeaders, val text: String) {
   
   val requiredHeaders = "WARC-Target-URI" :: "WARC-Date" :: Nil
   val isValid = requiredHeaders.forall(record.getHeader(_) != null)
