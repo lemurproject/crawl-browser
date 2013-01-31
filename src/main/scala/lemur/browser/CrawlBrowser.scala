@@ -46,6 +46,7 @@ object CrawlBrowser {
   def findFiles(inputDir: File, minLastModified: Long, maxLastModified: Long): Seq[File] = {
     for (
       file <- inputDir.listFiles;
+      if file.getName().endsWith(".warc.gz");
       if file.lastModified >= minLastModified;
       if file.lastModified <= maxLastModified
     ) yield file
@@ -155,19 +156,25 @@ object CrawlBrowser {
     val sampledResponses = responsesEng.filter(randomSample(sampleSize, _))
     
     var nResp = 0
-    
+    var nErr = 0
     val responsesProgress = new ProgressIterator(progress, sampledResponses).every(reportEvery)
     
     responsesProgress.foreach(resp => {
-      // Add them to the Lucene Index    
-      indexResponse(resp)
+      try {
+          // Add them to the Lucene Index    
+          indexResponse(resp)
+    
+          // Register the statistics
+          crawlStats.addResponse(resp)
 
-      // Register the statistics
-      crawlStats.addResponse(resp)
-      
-      nResp += 1
+          nResp += 1
+      }  catch {
+          case e: Exception => {
+              nErr += 1
+          }
+      }
     })
-    logger.info("Finished. Responses=%s".format(nResp))
+    logger.info("Finished. Responses=%s errors=%s".format(nResp, nErr))
   }
 
   def main(args: Array[String]) {

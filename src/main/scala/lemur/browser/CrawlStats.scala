@@ -40,7 +40,6 @@ class CrawlStats(path: File) {
   }
   
   def addResponse(response: Response) {
-    
     inc("general", "responses")
     
     val dateMonth = CrawlStats.dateFmtMonth.format(response.date)
@@ -49,7 +48,8 @@ class CrawlStats(path: File) {
     inc("date-day", dateDay)
 
     val domain = CrawlStats.domain(response.uri)
-    inc("domain", domain)
+    if (domain.isDefined)
+        inc("domain", domain.get)
   }
 
   def save() {
@@ -78,18 +78,22 @@ object CrawlStats {
   /**
    * Extracts the 'domain' part of a URL
    */
-  def domain(uri: URI): String = {
+  def domain(uri: URI): Option[String] = {
     val host = uri.getHost()
+    
+    if (host == null) {
+        return None
+    }
    
     val lastDot = host.lastIndexOf('.')
     if (lastDot == -1) {
-      return host
+      return Some(host)
     }
     val prevDot = host.lastIndexOf('.', lastDot - 1)
     if (prevDot == -1) {
-      return host
+      return Some(host)
     }
-    return host.substring(prevDot + 1, host.length())
+    return Some(host.substring(prevDot + 1, host.length()))
   }
   
 }
